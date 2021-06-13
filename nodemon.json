@@ -1,0 +1,7 @@
+{
+    "ignore": [
+        "fileData.json",
+        "rawData.json",
+        "historyData/*"
+    ]
+}
