@@ -41,4 +41,10 @@ module.exports = {
 - Skype: quocthanh2694
 - Phone: 0356957240 or (+84) 356957240
 
-# Thanks.
+## Important Note:
+
+- This is only for testing => Not for trading so we don't have any responsibility for the result of trading.
+- Please careful take care fo your capital. It's might be loss.
+- The wining rate is not measured. So please careful.
+
+# Thanks
