@@ -49,7 +49,7 @@ let taapiKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6InF1b2N0aGFuaDI
 
 
 
-    
+
 // const app = express();
 // const port = 5000;
 // const axios = require('axios');
@@ -248,3 +248,40 @@ let taapiKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6InF1b2N0aGFuaDI
 //         }
 //     });
 // }, 2000);
+
+
+
+
+
+    // if (balanceRes.length > 1 && balanceRes[1].asset) {
+    //     totalAmount = parseFloat(balanceRes[1].balance);
+    // }
+
+    // tpRes = await binance.futuresMarketBuy(TRADE_SYMBOL, 1, {
+    //     reduceOnly: true,
+    //     stopPrice: 15,
+    //     price: 15,
+    //     type: 'TAKE_PROFIT',
+    //     timeInForce: 'GTC',
+    // });
+    // console.log("🚀 ~ file: index.js ~ line 172 ~ command ~ tpRes", tpRes)
+
+
+    // const x = await binance.futuresOrderStatus(TRADE_SYMBOL, { orderId: '13699726711' });
+    // console.log(x)
+
+
+    // const res = await buy({
+    //     symbol: TRADE_SYMBOL,
+    //     qty: tokenAmountPerOrder,
+    //     tp: 25,
+    //     sl: 15
+    // });
+    // console.log("🚀 ~ file: i BUY res", res)
+
+    // const res = await sell({
+    //     symbol: TRADE_SYMBOL,
+    //     qty: 5,
+    //     tp: 1.8,
+    //     sl: 1.9
+    // });

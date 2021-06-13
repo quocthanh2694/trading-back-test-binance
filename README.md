@@ -30,6 +30,10 @@ module.exports = {
 - For back testing: `node backtest.js`.
 - for real trading: `npm start`.
 
+### The results of test or trading:
+
+- Please check in the folder: `historyData`
+
 ## Contact: If you want to have to contact with me:
 
 - Email: quocthanh2694@gmail.com
@@ -38,7 +42,7 @@ module.exports = {
 
 ## Important Note:
 
-- This is only for testing => Not for trading so we don't have any responsibility for the result of trading.
+- This is only a demo for testing, it's have a lot of bugs => Not for trading so we don't have any responsibility for the result of trading.
 - Please careful take care fo your capital. It's might be loss.
 - The wining rate is not measured. So please careful.
 

@@ -43,6 +43,19 @@ let last_closeLow = 0;
     return -100;
 }
 
+function getWinRate(histories) {
+    let winRate = 0;
+    if (histories.length > 0) {
+        const winArr = histories.filter(x => x.result == 'WIN');
+        const lossArr = histories.filter(x => x.result != 'WIN');
+        const total = winArr.length + lossArr.length;
+        winRate = winArr.length / total * 100;
+        console.log("W Count", winArr.length, "Loss count:", lossArr.length);
+    }
+    return winRate;
+}
+
 module.exports = {
-    calculateRSIData
+    calculateRSIData,
+    getWinRate
 }
