@@ -1,8 +1,9 @@
-# Trading strategy back test 1k candle
+# Trading strategy back test 1k candle via binance socket (Crypto currency):
 
 - This is the project for test your strategy about crypto trading.
 - The purpose for only back testing.
 - Thank you.
+- Now let's go to detail to start the project.
 
 ## (optional) If you want to trading with binance api:
 
@@ -29,12 +30,6 @@ module.exports = {
 - For back testing: `node backtest.js`.
 - for real trading: `npm start`.
 
-## Donate Address:
-
-- BTC: 1GLg5KjJV9QYkdMDCioZZ44XZKCfiFDsjx
-- USDT ERC20: 0x3ecaffd269052cb9b85119a5f992060fcb9296e3
-- USDT TRC20: TAnjA6mG4zttXp1KB9hj1a9tFqsqrZao7Y
-
 ## Contact: If you want to have to contact with me:
 
 - Email: quocthanh2694@gmail.com
@@ -47,4 +42,10 @@ module.exports = {
 - Please careful take care fo your capital. It's might be loss.
 - The wining rate is not measured. So please careful.
 
-# Thanks
+## Donate Address:
+
+- (Bitcoin) BTC: 1GLg5KjJV9QYkdMDCioZZ44XZKCfiFDsjx
+- USDT ERC20: 0x3ecaffd269052cb9b85119a5f992060fcb9296e3
+- USDT TRC20: TAnjA6mG4zttXp1KB9hj1a9tFqsqrZao7Y
+
+## Thanks
