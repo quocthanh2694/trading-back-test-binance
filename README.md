@@ -29,7 +29,7 @@ module.exports = {
 - For back testing: `node backtest.js`.
 - for real trading: `npm start`.
 
-## Donate info:
+## Donate Address:
 
 - BTC: 1GLg5KjJV9QYkdMDCioZZ44XZKCfiFDsjx
 - USDT ERC20: 0x3ecaffd269052cb9b85119a5f992060fcb9296e3
