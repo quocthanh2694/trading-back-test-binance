@@ -21,6 +21,9 @@ const binance = new Binance().options({
 let kdjOverBought = 65;
 let kdjOverSold = 35;
 
+let BOLLINGER_BANDS_PERIOD = 21;
+let BOLLINGER_BANDS_STDEV = 2;
+
 let MACD_FAST = 12;
 let MACD_SLOW = 26;
 let MACD_SIGNAL = 9;
@@ -39,18 +42,54 @@ let endTime = Date.now();
 
 let historyDistance = 2;
 
-let profitPercent = 22.5;
-let stopLossPercent = 22.5;
-let leverage = 45;
+let profitPercent = 25;
+let stopLossPercent = 20;
+let leverage = 40;
 
-let maxWinPerCommand = 6;
+let countWinMax = 2;
+
+command({
+    sym: 'link',
+    dollarAmountPerOrder: 0.2,
+    maxWinPerCommand: countWinMax,
+});
+command({
+    sym: 'ada',
+    dollarAmountPerOrder: 0.2,
+    maxWinPerCommand: countWinMax,
+});
+command({
+    sym: 'xrp',
+    dollarAmountPerOrder: 0.2,
+    maxWinPerCommand: countWinMax,
+});
+// command({
+//     sym: 'ltc',
+// });
+// command({
+//     sym: 'etc',
+// });
+
+// setTimeout(async () => {
+//     const x = await buy({
+//         symbol: 'adausdt',
+//         qty: 5,
+//         tp: 2,
+//         sl: 0.5
+//     });
+//     console.log('TEST',x)
+// }, 1000);
+
 
 async function command({
-    sym
+    sym,
+    dollarAmountPerOrder,
+    maxWinPerCommand,
 }) {
 
+    let startTime = new Date().toISOString();
+    let timeReachedFinal = 0;
     let totalAmount = 100;
-    let dollarAmountPerOrder = 0.5;
 
     let tokenAmountPerOrder = 0; // => will auto get the market price and set to this var
     let stopTrading = false;
@@ -74,7 +113,7 @@ async function command({
     let closes = []
     let loading = false;
     let FSOCKET = `wss://fstream.binance.com/ws/${TRADE_SYMBOL}@kline_${CANDLE_PERIOD}`
-
+    let stepPrice = -1;
 
 
     console.log('START Command......')
@@ -84,11 +123,27 @@ async function command({
     const setLeverageRes = await binance.futuresLeverage(TRADE_SYMBOL, leverage);
     const marketPriceRes = await binance.futuresMarkPrice(TRADE_SYMBOL);
 
+    const exchangeInfo = await binance.futuresExchangeInfo(TRADE_SYMBOL);
+
+    for (let i = 0; i < exchangeInfo.symbols.length; i++) {
+        let item = exchangeInfo.symbols[i];
+        if (item.symbol.toUpperCase() == TRADE_SYMBOL.toUpperCase()) {
+            console.info(' Step:', item.filters[1].stepSize);
+            stepPrice = item.filters[1].stepSize;
+        }
+    }
+
     if (marketPriceRes && marketPriceRes.markPrice) {
         const mkPrice = parseFloat(marketPriceRes.markPrice);
 
-        tokenAmountPerOrder = parseFloat((dollarAmountPerOrder / mkPrice * leverage).toFixed(2));
+        tokenAmountPerOrder = (dollarAmountPerOrder / mkPrice * leverage);
 
+        if ((stepPrice + '').includes('.')) {
+            const decimal = (stepPrice + '').split('.')[1].length;
+            tokenAmountPerOrder = parseFloat(tokenAmountPerOrder.toFixed(decimal));
+        } else {
+            tokenAmountPerOrder = parseInt(tokenAmountPerOrder);
+        }
         console.log('Market price: ', marketPriceRes.symbol, ': ', mkPrice);
         console.log('Token qty per order: ', tokenAmountPerOrder);
     }
@@ -98,6 +153,13 @@ async function command({
 
     closes = await getHistoryTickCandle(TRADE_SYMBOL, CANDLE_PERIOD);
 
+    if (stepPrice == -1 || tokenAmountPerOrder <= 0) {
+        console.log('Error step: ',
+            stepPrice,
+            'Error amount: ',
+            tokenAmountPerOrder);
+        return;
+    }
 
     const client = new WebSocketClient();
 
@@ -123,7 +185,7 @@ async function command({
                 }
                 process.stdout.clearLine();
                 process.stdout.cursorTo(0);
-                process.stdout.write('Current State: Stop: ' + stopTrading + ' P: ' + candle.k.c);
+                process.stdout.write('Current State: Stop: ' + stopTrading + ' P: ' + candle.k.c + ' ' + TRADE_SYMBOL);
 
                 // console.log('isStopTrade:', stopTrading, 'price: ' + candle.k.c, 'isClose: ' + candle.k.x, '', 'length: ' + closes.length);
                 // candle closed
@@ -228,7 +290,11 @@ async function command({
         if (is_candle_closed) {
 
             process.stdout.write("\n");
-            console.log('isStopTrade:', stopTrading, 'price: ' + close, 'isClose: ' + is_candle_closed, '', 'length: ' + closes.length);
+
+            console.log(TRADE_SYMBOL, ' isStopTrade:', stopTrading,
+                'price: ' + close,
+                'isClose: ' + is_candle_closed, '',
+                'length: ' + closes.length);
 
 
             let curClose = parseFloat(close);
@@ -311,7 +377,7 @@ async function command({
                 totalAmount,
             })
 
-            printWinRate(histories, rawHistories, dollarAmountPerOrder);
+            printWinRate(histories, rawHistories, dollarAmountPerOrder, startTime, timeReachedFinal, TRADE_SYMBOL);
 
         }
 
@@ -365,6 +431,9 @@ async function command({
 
             if (!ignoreTrend) {
                 if (winCount >= maxWinPerCommand) {
+                    if (winCount == maxWinPerCommand) {
+                        timeReachedFinal = new Date().toISOString();
+                    }
                     stopTrading = true;
                 }
 
@@ -465,16 +534,6 @@ async function command({
 
 };
 
-command({
-    sym: 'link',
-});
-command({
-    sym: 'ltc',
-});
-command({
-    sym: 'etc',
-});
-
 
 
 
@@ -489,8 +548,11 @@ command({
 ///////////////////////////////////////////////// Result win rate
 ///////////////////////////////////////////////// Result win rate
 ///////////////////////////////////////////////// Result win rate
-function printWinRate(histories, rawHistories, dollarAmountPerOrder) {
-    console.log('================', new Date().toISOString());
+function printWinRate(histories, rawHistories, dollarAmountPerOrder, startTime, timeReachedFinal, TRADE_SYMBOL) {
+    console.log(TRADE_SYMBOL)
+    console.log('Start Time:================:', startTime);
+    console.log('Reached limit win Time:====:', timeReachedFinal);
+    console.log('End Time:==================:', new Date().toISOString());
     if (!histories.length) {
         console.log('No result.')
         return;

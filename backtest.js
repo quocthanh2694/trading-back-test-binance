@@ -20,7 +20,7 @@ const technicalIndicators = require('technicalindicators');
 const { calculateRSIData } = require('./functions.js');
 
 let totalAmount = 100;
-let dollarAmountPerOrder = 0.5;
+let dollarAmountPerOrder = 0.2;
 let maxWinPerCommand = 1000;
 
 let tokenAmountPerOrder = 0; // => will auto get the market price and set to this var
@@ -28,12 +28,21 @@ let stopTrading = false;
 let increaseAfterLoss = true;
 
 // let tradeIncreasePerLossStreak = 4; // lossStreak % 4 = double. Ex: 5 % 4 => 2;
-let historyDistance = 2;
+let historyDistance = 1;
 let countHistory = 1000;
 let fee = 5; // percent per order
 let winCount = 0;
 
-let sym = 'link';
+
+let BOLLINGER_BANDS_PERIOD = 21;
+let BOLLINGER_BANDS_STDEV = 2;
+
+// let sym = 'etc';
+// let sym = 'ltc';
+// let sym = 'link';
+// let sym = 'xrp';
+// let sym = 'link';
+let sym = 'ada';
 let TRADE_SYMBOL = sym + 'usdt';
 let TRADE_SYMBOL_SPLASH = sym + '/usdt';
 console.log('Pair: ', TRADE_SYMBOL.toUpperCase())
@@ -42,9 +51,9 @@ let CANDLE_PERIOD = '1m';
 let kdjOverBought = 65;
 let kdjOverSold = 35;
 
-let profitPercent = 25;
-let stopLossPercent = 25;
-let leverage = 50;
+let profitPercent = 22;
+let stopLossPercent = 20;
+let leverage = 40;
 
 let histories = [];
 let rawHistories = [];
@@ -98,15 +107,22 @@ async function saveData(params) {
     let tp = -1;
 
     if (
-        rawHistories?.length > (historyDistance)
+        rawHistories?.length > (historyDistance + 1)
         && rawHistories[rawHistories.length - historyDistance].macd2
     ) {
 
         let lastItem = rawHistories[rawHistories.length - historyDistance];
-        // let lastItem2 = rawHistories[rawHistories.length - historyDistance * 2];
+        let lastItem2 = rawHistories[rawHistories.length - historyDistance - 1];
         if (
             params.macd2.MACD < params.macd2.signal
             && lastItem.macd2.MACD > lastItem.macd2.signal
+
+            // params.closePrice < params.bb.upper
+            // && lastItem.highPrice > params.bb.upper
+            // params.rsi2 > RSI_OVERBOUGHT
+
+            // && params.closePrice < params.openPrice
+            // && lastItem.closePrice < lastItem.openPrice
         ) {
             // if (params.rsi2 > RSI_OVERBOUGHT) {
             // if (kdj.valueJ > kdjOverBought) {
@@ -114,18 +130,31 @@ async function saveData(params) {
             todo = 'SELL';
             sl = parseFloat((params.closePrice + params.closePrice * (stopLossPercent / leverage) / 100).toFixed(2));
             tp = parseFloat((params.closePrice - params.closePrice * (profitPercent / leverage) / 100).toFixed(2));
-        }
-        if (
-            params.macd2.MACD > params.macd2.signal
-            && lastItem.macd2.MACD < lastItem.macd2.signal
-        ) {
-            // if (params.rsi2 < RSI_OVERSOLD) {
-            // if (kdj.valueJ < kdjOverSold) {
-            console.log('Should BUY BUY BUY BUY');
-            todo = 'BUY';
-            sl = parseFloat((params.closePrice - params.closePrice * (stopLossPercent / leverage) / 100).toFixed(2));
-            tp = parseFloat((params.closePrice + params.closePrice * (profitPercent / leverage) / 100).toFixed(2));
-        }
+            // tp = params.bb.lower;
+            // sl = params.closePrice + params.bb.pb;
+        } else
+            if (
+                params.macd2.MACD > params.macd2.signal
+                && lastItem.macd2.MACD < lastItem.macd2.signal
+
+                // params.closePrice > params.bb.lower
+                // && lastItem.lowPrice < params.bb.lower
+                // params.rsi2 < RSI_OVERSOLD
+
+
+
+                // && params.closePrice > params.openPrice
+                // && lastItem.closePrice > lastItem.openPrice
+            ) {
+                // if (params.rsi2 < RSI_OVERSOLD) {
+                // if (kdj.valueJ < kdjOverSold) {
+                console.log('Should BUY BUY BUY BUY');
+                todo = 'BUY';
+                sl = parseFloat((params.closePrice - params.closePrice * (stopLossPercent / leverage) / 100).toFixed(2));
+                tp = parseFloat((params.closePrice + params.closePrice * (profitPercent / leverage) / 100).toFixed(2));
+                // tp = params.bb.upper;
+                // sl = params.closePrice - params.bb.pb;
+            }
     }
 
 
@@ -337,6 +366,12 @@ function testHistory(arr = []) {
             period: EMA_PERIOD_200,
         })
 
+        let technicalIndicatorsBollingerBands = technicalIndicators.BollingerBands.calculate({
+            values: _closes,
+            period: BOLLINGER_BANDS_PERIOD,
+            stdDev: BOLLINGER_BANDS_STDEV,
+        })
+
         let technicalIndicatorsMACD = technicalIndicators.MACD.calculate({
             values: _closes,
             fastPeriod: 12,
@@ -390,8 +425,11 @@ function testHistory(arr = []) {
             ema50: technicalIndicatorsEMA_50[technicalIndicatorsEMA_50.length - 1],
             ema100: technicalIndicatorsEMA_100[technicalIndicatorsEMA_100.length - 1],
             ema200: technicalIndicatorsEMA_200[technicalIndicatorsEMA_200.length - 1],
+            bb: technicalIndicatorsBollingerBands[technicalIndicatorsBollingerBands.length - 1],
             closePrice: curClose,
             openPrice: curOpen,
+            highPrice: curHigh,
+            lowPrice: curLow,
             placeOrderType: 'nothing',
 
             leverage,

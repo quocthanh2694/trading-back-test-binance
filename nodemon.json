@@ -2,6 +2,7 @@
     "ignore": [
         "fileData.json",
         "rawData.json",
-        "historyData/*"
+        "historyData/*",
+        "backtest.js"
     ]
 }
