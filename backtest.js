@@ -37,12 +37,12 @@ let winCount = 0;
 let BOLLINGER_BANDS_PERIOD = 21;
 let BOLLINGER_BANDS_STDEV = 2;
 
+let sym = 'eth';
 // let sym = 'etc';
 // let sym = 'ltc';
 // let sym = 'link';
 // let sym = 'xrp';
-// let sym = 'link';
-let sym = 'ada';
+// let sym = 'ada';
 let TRADE_SYMBOL = sym + 'usdt';
 let TRADE_SYMBOL_SPLASH = sym + '/usdt';
 console.log('Pair: ', TRADE_SYMBOL.toUpperCase())
@@ -51,7 +51,7 @@ let CANDLE_PERIOD = '1m';
 let kdjOverBought = 65;
 let kdjOverSold = 35;
 
-let profitPercent = 22;
+let profitPercent = 20;
 let stopLossPercent = 20;
 let leverage = 40;
 
@@ -93,7 +93,7 @@ function getWinRate() {
         const lossArr = histories.filter(x => x.result != 'WIN');
         const total = winArr.length + lossArr.length;
         winRate = winArr.length / total * 100;
-        console.log("W Count", winArr.length, "Loss count:", lossArr.length);
+        // console.log("W Count", winArr.length, "Loss count:", lossArr.length);
     }
     return winRate;
 }
@@ -111,36 +111,55 @@ async function saveData(params) {
         && rawHistories[rawHistories.length - historyDistance].macd2
     ) {
 
+        let decimal = (params.closePrice + '').split('.')[1] ? (params.closePrice + '').split('.')[1].length : 0;
+
         let lastItem = rawHistories[rawHistories.length - historyDistance];
         let lastItem2 = rawHistories[rawHistories.length - historyDistance - 1];
         if (
-            params.macd2.MACD < params.macd2.signal
-            && lastItem.macd2.MACD > lastItem.macd2.signal
+            // params.macd2.MACD < params.macd2.signal
+            // && lastItem.macd2.MACD > lastItem.macd2.signal
+            // params.rsi2 < 50
+
+            params.closePrice < lastItem.closePrice
 
             // params.closePrice < params.bb.upper
             // && lastItem.highPrice > params.bb.upper
             // params.rsi2 > RSI_OVERBOUGHT
+
+            // params.bb.middle < params.ema100
+            // && lastItem.bb.middle > lastItem.ema100
+            // && params.closePrice < params.ema200
 
             // && params.closePrice < params.openPrice
             // && lastItem.closePrice < lastItem.openPrice
         ) {
             // if (params.rsi2 > RSI_OVERBOUGHT) {
             // if (kdj.valueJ > kdjOverBought) {
-            console.log('Should SELL SELL SELL SELL');
+            // console.log('Should SELL SELL SELL SELL');
             todo = 'SELL';
-            sl = parseFloat((params.closePrice + params.closePrice * (stopLossPercent / leverage) / 100).toFixed(2));
-            tp = parseFloat((params.closePrice - params.closePrice * (profitPercent / leverage) / 100).toFixed(2));
+            const _sl = parseFloat(params.closePrice + params.closePrice * (stopLossPercent / leverage) / 100);
+            const _tp = parseFloat(params.closePrice - params.closePrice * (profitPercent / leverage) / 100);
+            sl = parseFloat((_sl).toFixed(decimal));
+            tp = parseFloat((_tp).toFixed(decimal));
             // tp = params.bb.lower;
             // sl = params.closePrice + params.bb.pb;
         } else
             if (
-                params.macd2.MACD > params.macd2.signal
-                && lastItem.macd2.MACD < lastItem.macd2.signal
+                // params.macd2.MACD > params.macd2.signal
+                // && lastItem.macd2.MACD < lastItem.macd2.signal
 
                 // params.closePrice > params.bb.lower
                 // && lastItem.lowPrice < params.bb.lower
-                // params.rsi2 < RSI_OVERSOLD
 
+                params.closePrice > lastItem.closePrice
+
+                // && params.closePrice > params.ema200
+                // params.bb.middle > params.ema100
+                // && lastItem.bb.middle < lastItem.ema100
+
+
+                // params.rsi2 < RSI_OVERSOLD
+                // params.rsi2 > 50
 
 
                 // && params.closePrice > params.openPrice
@@ -148,10 +167,12 @@ async function saveData(params) {
             ) {
                 // if (params.rsi2 < RSI_OVERSOLD) {
                 // if (kdj.valueJ < kdjOverSold) {
-                console.log('Should BUY BUY BUY BUY');
+                // console.log('Should BUY BUY BUY BUY');
                 todo = 'BUY';
-                sl = parseFloat((params.closePrice - params.closePrice * (stopLossPercent / leverage) / 100).toFixed(2));
-                tp = parseFloat((params.closePrice + params.closePrice * (profitPercent / leverage) / 100).toFixed(2));
+                const _sl = parseFloat(params.closePrice - params.closePrice * (stopLossPercent / leverage) / 100);
+                const _tp = parseFloat(params.closePrice + params.closePrice * (profitPercent / leverage) / 100);
+                sl = parseFloat((_sl).toFixed(decimal));
+                tp = parseFloat((_tp).toFixed(decimal));
                 // tp = params.bb.upper;
                 // sl = params.closePrice - params.bb.pb;
             }
@@ -196,7 +217,7 @@ async function saveData(params) {
         }
 
     } else {
-        console.log('Last order is not closed or don\'t have any opportunity to trade.')
+        // console.log('Last order is not closed or don\'t have any opportunity to trade.')
     }
 
     fs.writeFileSync(databaseName, JSON.stringify(histories));

@@ -3,6 +3,7 @@
         "fileData.json",
         "rawData.json",
         "historyData/*",
-        "backtest.js"
+        "backtest.js",
+        "index.js"
     ]
 }

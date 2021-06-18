@@ -40,29 +40,42 @@ let countHistory = 400;
 let fee = 5; // percent per order
 let endTime = Date.now();
 
-let historyDistance = 2;
+let historyDistance = 1;
 
-let profitPercent = 25;
+let profitPercent = 20;
 let stopLossPercent = 20;
 let leverage = 40;
 
+
+let capital = 0.2;
 let countWinMax = 2;
 
-command({
-    sym: 'link',
-    dollarAmountPerOrder: 0.2,
-    maxWinPerCommand: countWinMax,
+const tradingCommands = [
+    // {
+    //     sym: 'xrp',
+    // },
+    // {
+    //     sym: 'eth',
+    // },
+    {
+        sym: 'ada',
+    },
+    // {
+    //     sym: 'link',
+    // },
+    // {
+    //     sym: '1inch',
+    // }
+];
+tradingCommands.forEach(item => {
+    command({
+        sym: item.sym,
+        dollarAmountPerOrder: capital,
+        maxWinPerCommand: countWinMax,
+    });
 });
-command({
-    sym: 'ada',
-    dollarAmountPerOrder: 0.2,
-    maxWinPerCommand: countWinMax,
-});
-command({
-    sym: 'xrp',
-    dollarAmountPerOrder: 0.2,
-    maxWinPerCommand: countWinMax,
-});
+
+
 // command({
 //     sym: 'ltc',
 // });
@@ -71,14 +84,26 @@ command({
 // });
 
 // setTimeout(async () => {
-//     const x = await buy({
-//         symbol: 'adausdt',
-//         qty: 5,
-//         tp: 2,
-//         sl: 0.5
-//     });
-//     console.log('TEST',x)
-// }, 1000);
+//     //     const x = await buy({
+//     //         symbol: 'adausdt',
+//     //         qty: 5,
+//     //         tp: 2,
+//     //         sl: 0.5
+//     //     });
+//     //     console.log('TEST', x)
+
+//     const a = async function () {
+//         // 14270922419
+//         const closeAllOpenRes = await binance.futuresCancelAll('adausdt');
+//         console.log("(1) Clear lastItemPosition success: ", closeAllOpenRes)
+
+//         // close buy
+//         console.info(await binance.futuresMarketSell('adausdt', 5));
+
+
+//     }
+//     a();
+// }, 2000);
 
 
 async function command({
@@ -90,6 +115,7 @@ async function command({
     let startTime = new Date().toISOString();
     let timeReachedFinal = 0;
     let totalAmount = 100;
+    let initialAmount = totalAmount; // for calculate profit
 
     let tokenAmountPerOrder = 0; // => will auto get the market price and set to this var
     let stopTrading = false;
@@ -97,6 +123,7 @@ async function command({
     let increaseAfterLoss = true; // double your initial amount whenever loss an order
 
     let winCount = 0;
+    let stepPriceDecimal = 2;
 
     let histories = [];
     let rawHistories = [];
@@ -130,20 +157,22 @@ async function command({
         if (item.symbol.toUpperCase() == TRADE_SYMBOL.toUpperCase()) {
             console.info(' Step:', item.filters[1].stepSize);
             stepPrice = item.filters[1].stepSize;
+            break;
         }
     }
 
     if (marketPriceRes && marketPriceRes.markPrice) {
         const mkPrice = parseFloat(marketPriceRes.markPrice);
 
-        tokenAmountPerOrder = (dollarAmountPerOrder / mkPrice * leverage);
+        tokenAmountPerOrder = parseFloat(dollarAmountPerOrder / mkPrice * leverage);
 
         if ((stepPrice + '').includes('.')) {
-            const decimal = (stepPrice + '').split('.')[1].length;
-            tokenAmountPerOrder = parseFloat(tokenAmountPerOrder.toFixed(decimal));
+            stepPriceDecimal = (stepPrice + '').split('.')[1] ? (stepPrice + '').split('.')[1].length : 0;
+            tokenAmountPerOrder = parseFloat(tokenAmountPerOrder.toFixed(stepPriceDecimal));
         } else {
             tokenAmountPerOrder = parseInt(tokenAmountPerOrder);
         }
+        console.log("stepPriceDecimal: ", stepPriceDecimal)
         console.log('Market price: ', marketPriceRes.symbol, ': ', mkPrice);
         console.log('Token qty per order: ', tokenAmountPerOrder);
     }
@@ -167,6 +196,7 @@ async function command({
         console.log('Connect Error: ' + error.toString());
     });
 
+    let intervalReconnect;
     client.on('connect', function (connection) {
         console.log('WebSocket Client Connected');
         loading = false;
@@ -175,17 +205,27 @@ async function command({
         });
         connection.on('close', function () {
             console.log('echo-protocol Connection Closed');
+            // reconnect if have problem about network
+            intervalReconnect = setInterval(() => {
+                console.log('Reconnect to socket.....')
+                client.connect(FSOCKET);
+            }, 3000);
         });
         connection.on('message', async function (message) {
             if (message.type === 'utf8') {
+                clearInterval(intervalReconnect);
 
                 const candle = JSON.parse(message.utf8Data);
-                if (stopTrading && loading) {
+                if (stopTrading || loading) {
+                    process.stdout.cursorTo(0);
+                    process.stdout.clearLine();
+                    process.stdout.write('STOPPED.');
                     return;
                 }
+
                 process.stdout.clearLine();
                 process.stdout.cursorTo(0);
-                process.stdout.write('Current State: Stop: ' + stopTrading + ' P: ' + candle.k.c + ' ' + TRADE_SYMBOL);
+                process.stdout.write('Current State: ' + TRADE_SYMBOL + ' Is Stop: ' + stopTrading + ' Price: ' + candle.k.c + ' ');
 
                 // console.log('isStopTrade:', stopTrading, 'price: ' + candle.k.c, 'isClose: ' + candle.k.x, '', 'length: ' + closes.length);
                 // candle closed
@@ -214,7 +254,7 @@ async function command({
 
                     if (lastItem.todo == 'BUY') {
                         if (close >= lastItem.tp) {
-                            const tpFilled = await isOrderFilled(TRADE_SYMBOL, lastItem.orderRes.tpRes.orderId);
+                            const tpFilled = await isOrderFilled(TRADE_SYMBOL, lastItem.orderRes.tpRes.orderId, lastItem.orderRes.origQty, lastItem.todo);
                             if (tpFilled) {
                                 // win
                                 lastItem.result = 'WIN';
@@ -225,7 +265,7 @@ async function command({
                                 }
                             }
                         } else if (close <= lastItem.sl) {
-                            const slFilled = await isOrderFilled(TRADE_SYMBOL, lastItem.orderRes.slRes.orderId);
+                            const slFilled = await isOrderFilled(TRADE_SYMBOL, lastItem.orderRes.slRes.orderId, lastItem.orderRes.origQty, lastItem.todo);
                             if (slFilled) {
                                 lastItem.result = 'LOSS';
                                 lastItem.processed = true;
@@ -234,14 +274,14 @@ async function command({
                     } else {
                         // short
                         if (close >= lastItem.sl) {
-                            const slFilled = await isOrderFilled(TRADE_SYMBOL, lastItem.orderRes.slRes.orderId);
+                            const slFilled = await isOrderFilled(TRADE_SYMBOL, lastItem.orderRes.slRes.orderId, lastItem.orderRes.origQty, lastItem.todo);
                             if (slFilled) {
                                 // win
                                 lastItem.result = 'LOSS';
                                 lastItem.processed = true;
                             }
                         } else if (close <= lastItem.tp) {
-                            const tpFilled = await isOrderFilled(TRADE_SYMBOL, lastItem.orderRes.tpRes.orderId);
+                            const tpFilled = await isOrderFilled(TRADE_SYMBOL, lastItem.orderRes.tpRes.orderId, lastItem.orderRes.origQty, lastItem.todo);
                             if (tpFilled) {
                                 lastItem.result = 'WIN';
                                 lastItem.processed = true;
@@ -346,12 +386,20 @@ async function command({
 
             let tempAmount = dollarAmountPerOrder;
             let tempTokenAmount = tokenAmountPerOrder;
-            if (increaseAfterLoss) {
-                if (histories && histories.length > 0
-                    && histories[histories.length - 1].result == 'LOSS') {
-                    const _lastItem = histories[histories.length - 1];
-                    tempAmount = parseFloat((_lastItem.amountPerOrder * 2).toFixed(2));
-                    tempTokenAmount = parseFloat((_lastItem.tokenAmountPerOrder * 2).toFixed(2));
+            if (increaseAfterLoss && histories?.length > 0) {
+                const _lastItem = histories[histories.length - 1];
+                if (_lastItem.result == 'LOSS') {
+                    if ((stepPrice + '').includes('.')) {
+                        tempAmount = parseFloat((_lastItem.amountPerOrder * 2).toFixed(stepPriceDecimal));
+                        tempTokenAmount = parseFloat((_lastItem.tokenAmountPerOrder * 2).toFixed(stepPriceDecimal));
+                    } else {
+                        tempAmount = parseInt((_lastItem.amountPerOrder * 2));
+                        tempTokenAmount = parseInt((_lastItem.tokenAmountPerOrder * 2));
+                    }
+                } else if (_lastItem.result != 'WIN') {
+                    // incase confuse, loss connect, error...
+                    tempAmount = _lastItem.amountPerOrder;
+                    tempTokenAmount = _lastItem.tokenAmountPerOrder;
                 }
             }
 
@@ -377,7 +425,7 @@ async function command({
                 totalAmount,
             })
 
-            printWinRate(histories, rawHistories, dollarAmountPerOrder, startTime, timeReachedFinal, TRADE_SYMBOL);
+            printWinRate(histories, rawHistories, dollarAmountPerOrder, startTime, timeReachedFinal, TRADE_SYMBOL, initialAmount);
 
         }
 
@@ -389,35 +437,44 @@ async function command({
         let todo = '';
         let sl = -1;
         let tp = -1;
+        let decimal = (params.closePrice + '').split('.')[1] ? (params.closePrice + '').split('.')[1].length : 0;
 
         if (
             rawHistories?.length > (historyDistance)
             && rawHistories[rawHistories.length - historyDistance].macd2
         ) {
 
+            // condition
             let lastItem = rawHistories[rawHistories.length - historyDistance];
             // let lastItem2 = rawHistories[rawHistories.length - historyDistance * 2];
             if (
-                params.macd2.MACD < params.macd2.signal
-                && lastItem.macd2.MACD > lastItem.macd2.signal
+                // params.macd2.MACD < params.macd2.signal
+                // && lastItem.macd2.MACD > lastItem.macd2.signal
+                params.closePrice < lastItem.closePrice
+
             ) {
                 // if (params.rsi2 > RSI_OVERBOUGHT) {
                 // if (kdj.valueJ > kdjOverBought) {
                 console.log('Should SELL SELL SELL SELL');
                 todo = 'SELL';
-                sl = parseFloat((params.closePrice + params.closePrice * (stopLossPercent / leverage) / 100).toFixed(2));
-                tp = parseFloat((params.closePrice - params.closePrice * (profitPercent / leverage) / 100).toFixed(2));
+                const _sl = parseFloat(params.closePrice + params.closePrice * (stopLossPercent / leverage) / 100);
+                const _tp = parseFloat(params.closePrice - params.closePrice * (profitPercent / leverage) / 100);
+                sl = parseFloat((_sl).toFixed(decimal));
+                tp = parseFloat((_tp).toFixed(decimal));
             }
             if (
-                params.macd2.MACD > params.macd2.signal
-                && lastItem.macd2.MACD < lastItem.macd2.signal
+                // params.macd2.MACD > params.macd2.signal
+                // && lastItem.macd2.MACD < lastItem.macd2.signal
+                params.closePrice > lastItem.closePrice
             ) {
                 // if (params.rsi2 < RSI_OVERSOLD) {
                 // if (kdj.valueJ < kdjOverSold) {
                 console.log('Should BUY BUY BUY BUY');
                 todo = 'BUY';
-                sl = parseFloat((params.closePrice - params.closePrice * (stopLossPercent / leverage) / 100).toFixed(2));
-                tp = parseFloat((params.closePrice + params.closePrice * (profitPercent / leverage) / 100).toFixed(2));
+                const _sl = parseFloat(params.closePrice - params.closePrice * (stopLossPercent / leverage) / 100);
+                const _tp = parseFloat(params.closePrice + params.closePrice * (profitPercent / leverage) / 100);
+                sl = parseFloat((_sl).toFixed(decimal));
+                tp = parseFloat((_tp).toFixed(decimal));
             }
         }
 
@@ -548,27 +605,29 @@ async function command({
 ///////////////////////////////////////////////// Result win rate
 ///////////////////////////////////////////////// Result win rate
 ///////////////////////////////////////////////// Result win rate
-function printWinRate(histories, rawHistories, dollarAmountPerOrder, startTime, timeReachedFinal, TRADE_SYMBOL) {
-    console.log(TRADE_SYMBOL)
+function printWinRate(histories, rawHistories, dollarAmountPerOrder, startTime, timeReachedFinal, TRADE_SYMBOL, initialAmount) {
+    process.stdout.write("\n");
+    console.log('SYMBOL=====================:', TRADE_SYMBOL)
     console.log('Start Time:================:', startTime);
     console.log('Reached limit win Time:====:', timeReachedFinal);
     console.log('End Time:==================:', new Date().toISOString());
     if (!histories.length) {
-        console.log('No result.')
+        // console.log('No result.')
         return;
     }
     winRate = getWinRate(histories);
-    console.log('Total length', rawHistories.length);
-    const confuseArr = histories.filter(x => x.result == 'CONFUSE');
-    console.log("🚀 confuseArr", confuseArr.length);
+    // console.log('Total length', rawHistories.length);
+    // const confuseArr = histories.filter(x => x.result == 'CONFUSE');
+    // console.log("🚀 confuseArr (in case )", confuseArr.length);
     const lossStreakArr = histories.map(x => x.lossStreak);
     const winStreakArr = histories.map(x => x.winStreak);
-    console.log('Max LossStreak: ', Math.max(...lossStreakArr));
-    console.log('Max WinStreak: ', Math.max(...winStreakArr));
-    console.log('Total Fee: ', dollarAmountPerOrder * histories.length * fee / 100)
-    console.log('Total amount final: ', histories[histories.length - 1].totalAmount)
-
-    console.log('========================================W rate: ', winRate, '%', 'of', histories?.length)
+    console.log('Max WinStreak / LossStreak: ', Math.max(...winStreakArr), ' / ', Math.max(...lossStreakArr));
+    // console.log('Total Fee: ', dollarAmountPerOrder * histories.length * fee / 100)
+    console.log('Total Command: ', histories.length)
+    const final = histories[histories.length - 1].totalAmount - initialAmount;
+    console.log('Profit estimate: ', final,
+        ' for amount: ', dollarAmountPerOrder, ' Latest amount: ', histories[histories.length - 1].amountPerOrder);
+    console.log('Win rate===================:', winRate, '%', 'of', histories?.length)
 }
 
 
@@ -633,12 +692,43 @@ async function checkIsCloseLastOrder(TRADE_SYMBOL) {
     return false;
 }
 
-async function isOrderFilled(TRADE_SYMBOL, id) {
+async function isOrderFilled(TRADE_SYMBOL, id, qty, todo) {
     const x = await binance.futuresOrderStatus(TRADE_SYMBOL, { orderId: id });
-    // if (x.status == 'EXPIRED') {
-    //     return false;
-    // }
+    if (x.status == 'EXPIRED') {
+        // close all current pos if some order was expired
+        if (todo == 'BUY') {
+            closeAllBuyPositionRiskAndOpensOrder(TRADE_SYMBOL, qty);
+        } else {
+            closeAllSellPositionRiskAndOpensOrder(TRADE_SYMBOL, qty);
+        }
+        // log
+        const lastItem = histories[histories?.length - 1];
+
+        lastItem.result = 'LOSS';
+        lastItem.processed = true;
+        lastItem.autoCloseBecauseOfErrorExpired = true;
+        lastItem.isError = true;
+        // save log
+        fs.writeFileSync(databaseName, JSON.stringify(histories));
+        return false;
+    }
     return x.status == 'FILLED';
+}
+
+async function closeAllBuyPositionRiskAndOpensOrder(TRADE_SYMBOL, qty) {
+    const closeAllOpenRes = await binance.futuresCancelAll(TRADE_SYMBOL);
+    console.log("(1) Clear lastItemPosition success: ", closeAllOpenRes.code == 200);
+    // close buy
+    console.info(await binance.futuresMarketSell(TRADE_SYMBOL, qty));
+
+}
+
+async function closeAllSellPositionRiskAndOpensOrder(TRADE_SYMBOL, qty) {
+    const closeAllOpenRes = await binance.futuresCancelAll(TRADE_SYMBOL);
+    console.log("(1) Clear lastItemPosition success: ", closeAllOpenRes.code == 200);
+    // close sell
+    console.info(await binance.futuresMarketBuy(TRADE_SYMBOL, qty));
+
 }
 
 
@@ -663,6 +753,13 @@ async function buy({ symbol, qty, tp, sl }) {
             timeInForce: 'GTC',
         })
     }
+    // close all if have error
+    if (orderRes?.orderId && (tp && tpRes?.status != 'NEW'
+        || sl && slRes?.status != 'NEW')) {
+        // close
+        closeAllBuyPositionRiskAndOpensOrder(symbol, qty);
+    }
+
     return {
         orderRes,
         tpRes,
@@ -691,6 +788,14 @@ async function sell({ symbol, qty, tp, sl }) {
             timeInForce: 'GTC',
         })
     }
+
+    // close all if have error
+    if (orderRes?.orderId && (tp && tpRes?.status != 'NEW'
+        || sl && slRes?.status != 'NEW')) {
+        // close
+        closeAllSellPositionRiskAndOpensOrder(symbol, qty);
+    }
+
     return {
         orderRes,
         tpRes,
