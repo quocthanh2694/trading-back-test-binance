@@ -47,16 +47,16 @@ let stopLossPercent = 20;
 let leverage = 40;
 
 
-let capital = 0.2;
+let capital = 0.4;
 let countWinMax = 2;
 
 const tradingCommands = [
     // {
     //     sym: 'xrp',
     // },
-    // {
-    //     sym: 'eth',
-    // },
+    {
+        sym: 'eth',
+    },
     {
         sym: 'ada',
     },
@@ -83,27 +83,31 @@ tradingCommands.forEach(item => {
 //     sym: 'etc',
 // });
 
-// setTimeout(async () => {
-//     //     const x = await buy({
-//     //         symbol: 'adausdt',
-//     //         qty: 5,
-//     //         tp: 2,
-//     //         sl: 0.5
-//     //     });
-//     //     console.log('TEST', x)
-
-//     const a = async function () {
-//         // 14270922419
-//         const closeAllOpenRes = await binance.futuresCancelAll('adausdt');
-//         console.log("(1) Clear lastItemPosition success: ", closeAllOpenRes)
-
-//         // close buy
-//         console.info(await binance.futuresMarketSell('adausdt', 5));
+setTimeout(async () => {
+    //     //     const x = await buy({
+    //     //         symbol: 'adausdt',
+    //     //         qty: 5,
+    //     //         tp: 2,
+    //     //         sl: 0.5
+    //     //     });
+    //     //     console.log('TEST', x)
 
 
-//     }
-//     a();
-// }, 2000);
+    // const a = async function () {
+    //     // // 14270922419
+    //     // const closeAllOpenRes = await binance.futuresCancelAll('adausdt');
+    //     // console.log("(1) Clear lastItemPosition success: ", closeAllOpenRes)
+
+    //     // // close buy
+    //     // console.info(await binance.futuresMarketSell('adausdt', 5));
+    //     const x = await binance.futuresOrderStatus('ethusdt', { orderId: '8389765500406589091' });
+    //     if (x.status == 'EXPIRED') {
+    //         console.info(x);
+    //     }
+
+    // }
+    // a();
+}, 2000);
 
 
 async function command({
@@ -254,7 +258,7 @@ async function command({
 
                     if (lastItem.todo == 'BUY') {
                         if (close >= lastItem.tp) {
-                            const tpFilled = await isOrderFilled(TRADE_SYMBOL, lastItem.orderRes.tpRes.orderId, lastItem.orderRes.origQty, lastItem.todo);
+                            const tpFilled = await isOrderFilled(TRADE_SYMBOL, lastItem.orderRes.tpRes.orderId, lastItem.orderRes.origQty, lastItem.todo, histories, databaseName);
                             if (tpFilled) {
                                 // win
                                 lastItem.result = 'WIN';
@@ -265,7 +269,7 @@ async function command({
                                 }
                             }
                         } else if (close <= lastItem.sl) {
-                            const slFilled = await isOrderFilled(TRADE_SYMBOL, lastItem.orderRes.slRes.orderId, lastItem.orderRes.origQty, lastItem.todo);
+                            const slFilled = await isOrderFilled(TRADE_SYMBOL, lastItem.orderRes.slRes.orderId, lastItem.orderRes.origQty, lastItem.todo, histories, databaseName);
                             if (slFilled) {
                                 lastItem.result = 'LOSS';
                                 lastItem.processed = true;
@@ -274,14 +278,14 @@ async function command({
                     } else {
                         // short
                         if (close >= lastItem.sl) {
-                            const slFilled = await isOrderFilled(TRADE_SYMBOL, lastItem.orderRes.slRes.orderId, lastItem.orderRes.origQty, lastItem.todo);
+                            const slFilled = await isOrderFilled(TRADE_SYMBOL, lastItem.orderRes.slRes.orderId, lastItem.orderRes.origQty, lastItem.todo, histories, databaseName);
                             if (slFilled) {
                                 // win
                                 lastItem.result = 'LOSS';
                                 lastItem.processed = true;
                             }
                         } else if (close <= lastItem.tp) {
-                            const tpFilled = await isOrderFilled(TRADE_SYMBOL, lastItem.orderRes.tpRes.orderId, lastItem.orderRes.origQty, lastItem.todo);
+                            const tpFilled = await isOrderFilled(TRADE_SYMBOL, lastItem.orderRes.tpRes.orderId, lastItem.orderRes.origQty, lastItem.todo, histories, databaseName);
                             if (tpFilled) {
                                 lastItem.result = 'WIN';
                                 lastItem.processed = true;
@@ -692,14 +696,17 @@ async function checkIsCloseLastOrder(TRADE_SYMBOL) {
     return false;
 }
 
-async function isOrderFilled(TRADE_SYMBOL, id, qty, todo) {
+async function isOrderFilled(TRADE_SYMBOL, id, qty, todo, histories, databaseName) {
     const x = await binance.futuresOrderStatus(TRADE_SYMBOL, { orderId: id });
     if (x.status == 'EXPIRED') {
         // close all current pos if some order was expired
-        if (todo == 'BUY') {
-            closeAllBuyPositionRiskAndOpensOrder(TRADE_SYMBOL, qty);
-        } else {
-            closeAllSellPositionRiskAndOpensOrder(TRADE_SYMBOL, qty);
+        const isLastOrderClosed = await checkIsCloseLastOrder(TRADE_SYMBOL);
+        if (!isLastOrderClosed) {
+            if (todo == 'BUY') {
+                await closeAllBuyPositionRiskAndOpensOrder(TRADE_SYMBOL, qty);
+            } else {
+                await closeAllSellPositionRiskAndOpensOrder(TRADE_SYMBOL, qty);
+            }
         }
         // log
         const lastItem = histories[histories?.length - 1];
@@ -757,7 +764,7 @@ async function buy({ symbol, qty, tp, sl }) {
     if (orderRes?.orderId && (tp && tpRes?.status != 'NEW'
         || sl && slRes?.status != 'NEW')) {
         // close
-        closeAllBuyPositionRiskAndOpensOrder(symbol, qty);
+        await closeAllBuyPositionRiskAndOpensOrder(symbol, qty);
     }
 
     return {
