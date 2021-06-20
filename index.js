@@ -48,24 +48,24 @@ let leverage = 40;
 
 
 let capital = 0.4;
-let countWinMax = 2;
+let countWinMax = 5;
 
 const tradingCommands = [
-    // {
-    //     sym: 'xrp',
-    // },
+    {
+        sym: 'xrp',
+    },
     {
         sym: 'eth',
     },
     {
         sym: 'ada',
     },
-    // {
-    //     sym: 'link',
-    // },
-    // {
-    //     sym: '1inch',
-    // }
+    {
+        sym: 'link',
+    },
+    {
+        sym: '1inch',
+    }
 ];
 tradingCommands.forEach(item => {
     command({
@@ -84,13 +84,29 @@ tradingCommands.forEach(item => {
 // });
 
 setTimeout(async () => {
-    //     //     const x = await buy({
-    //     //         symbol: 'adausdt',
-    //     //         qty: 5,
-    //     //         tp: 2,
-    //     //         sl: 0.5
-    //     //     });
-    //     //     console.log('TEST', x)
+
+
+    // const x = await binance.futuresOrderStatus('adausdt', { orderId: '14351704175' });
+    // console.log("🚀 ~ file: index.js ~ line 89 ~ setTimeout ~ x", x)
+
+    // const tpFilled = await isOrderFilled('ETHUSDT', '8389765500477397228', "0.007", "BUY", [], 'databaseName');
+    // console.log("🚀 ~ file: index.js ~ line 89 ~ setTimeout ~ 1", tpFilled)
+
+    // const s = await isOrderFilled('ETHUSDT', '8389765500477397303', "0.007", "BUY", [], 'databaseName');
+    // console.log("🚀 ~ file: index.js ~ line 89 ~ setTimeout ~ 2", s)
+
+    // const positionRiskRes = await binance.futuresPositionRisk({ symbol: 'ethusdt' })
+    // console.info('Position risk:', positionRiskRes);
+
+    // console.info(await binance.futuresHistoricalTrades("ethusdt"));
+
+    // const x = await buy({
+    //     symbol: 'adausdt',
+    //     qty: 5,
+    //     tp: 2,
+    //     sl: 0.5
+    // });
+    // console.log('TEST', x)
 
 
     // const a = async function () {
@@ -223,7 +239,7 @@ async function command({
                 if (stopTrading || loading) {
                     process.stdout.cursorTo(0);
                     process.stdout.clearLine();
-                    process.stdout.write('STOPPED.');
+                    process.stdout.write('STOPPED.' + stopTrading + '-' + loading);
                     return;
                 }
 
@@ -697,7 +713,8 @@ async function checkIsCloseLastOrder(TRADE_SYMBOL) {
 }
 
 async function isOrderFilled(TRADE_SYMBOL, id, qty, todo, histories, databaseName) {
-    const x = await binance.futuresOrderStatus(TRADE_SYMBOL, { orderId: id });
+    const x = await binance.futuresOrderStatus(TRADE_SYMBOL, { orderId: id + '' });
+    console.log("🚀 ~ file: index.js ~ line 710 ~ isOrderFilled ~ x", x, TRADE_SYMBOL, { orderId: id + '' })
     if (x.status == 'EXPIRED') {
         // close all current pos if some order was expired
         const isLastOrderClosed = await checkIsCloseLastOrder(TRADE_SYMBOL);
@@ -710,6 +727,7 @@ async function isOrderFilled(TRADE_SYMBOL, id, qty, todo, histories, databaseNam
         }
         // log
         const lastItem = histories[histories?.length - 1];
+        console.log("🚀 ~ file: index.js ~ line 723 ~ isOrderFilled ~ lastItem", lastItem)
 
         lastItem.result = 'LOSS';
         lastItem.processed = true;
