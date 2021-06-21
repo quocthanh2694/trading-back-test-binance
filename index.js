@@ -47,25 +47,27 @@ let stopLossPercent = 20;
 let leverage = 40;
 
 
-let capital = 0.4;
+let capital = 0.5;
 let countWinMax = 5;
 
 const tradingCommands = [
-    {
-        sym: 'xrp',
-    },
-    {
-        sym: 'eth',
-    },
-    {
-        sym: 'ada',
-    },
-    {
-        sym: 'link',
-    },
-    {
-        sym: '1inch',
-    }
+    { sym: 'xrp', },
+    { sym: 'eth', },
+    { sym: 'ada', },
+    { sym: 'link', },
+    { sym: 'bch', },
+
+    { sym: '1inch', },
+    { sym: 'etc', },
+    { sym: 'ltc', },
+    { sym: 'eos', },
+    { sym: 'bnb', },
+
+    { sym: 'neo', },
+    { sym: 'dash', },
+    { sym: 'dot', },
+    { sym: 'uni', },
+    { sym: 'avax', },
 ];
 tradingCommands.forEach(item => {
     command({
@@ -143,7 +145,8 @@ async function command({
     let increaseAfterLoss = true; // double your initial amount whenever loss an order
 
     let winCount = 0;
-    let stepPriceDecimal = 2;
+    let orderQtyPriceDecimal = 2; // step price for order qty
+    let stepPriceDecimal = -1; // (params.closePrice + '').split('.')[1] ? (params.closePrice + '').split('.')[1].length : 0;
 
     let histories = [];
     let rawHistories = [];
@@ -155,7 +158,7 @@ async function command({
     console.log('Pair: ', TRADE_SYMBOL.toUpperCase())
 
     let databaseName = 'historyData/' + TRADE_SYMBOL + (new Date().toISOString().split(":").join("-")) + 'fileData.json';
-    let databaseNameRaw = 'historyData/Raw_' + TRADE_SYMBOL + (new Date().toISOString().split(":").join("-")) + 'rawData.json';
+    let databaseNameRaw = 'historyData/zRaw_' + TRADE_SYMBOL + (new Date().toISOString().split(":").join("-")) + 'rawData.json';
 
     let closes = []
     let loading = false;
@@ -167,6 +170,7 @@ async function command({
 
     await binance.useServerTime();
     const balanceRes = await binance.futuresBalance();
+    await binance.futuresMarginType(TRADE_SYMBOL, 'ISOLATED')
     const setLeverageRes = await binance.futuresLeverage(TRADE_SYMBOL, leverage);
     const marketPriceRes = await binance.futuresMarkPrice(TRADE_SYMBOL);
 
@@ -176,7 +180,14 @@ async function command({
         let item = exchangeInfo.symbols[i];
         if (item.symbol.toUpperCase() == TRADE_SYMBOL.toUpperCase()) {
             console.info(' Step:', item.filters[1].stepSize);
+
+            // decimal size for qty
             stepPrice = item.filters[1].stepSize;
+
+            // decimal size for price
+            let tickSize = item.filters[0].tickSize;
+            stepPriceDecimal = (tickSize + '').split('.')[1] ? (tickSize + '').split('.')[1].length : 0;
+            console.log("stepPriceDecimal: ", stepPriceDecimal)
             break;
         }
     }
@@ -187,12 +198,12 @@ async function command({
         tokenAmountPerOrder = parseFloat(dollarAmountPerOrder / mkPrice * leverage);
 
         if ((stepPrice + '').includes('.')) {
-            stepPriceDecimal = (stepPrice + '').split('.')[1] ? (stepPrice + '').split('.')[1].length : 0;
-            tokenAmountPerOrder = parseFloat(tokenAmountPerOrder.toFixed(stepPriceDecimal));
+            orderQtyPriceDecimal = (stepPrice + '').split('.')[1] ? (stepPrice + '').split('.')[1].length : 0;
+            tokenAmountPerOrder = parseFloat(tokenAmountPerOrder.toFixed(orderQtyPriceDecimal));
         } else {
             tokenAmountPerOrder = parseInt(tokenAmountPerOrder);
         }
-        console.log("stepPriceDecimal: ", stepPriceDecimal)
+        console.log("orderQtyPriceDecimal: ", orderQtyPriceDecimal)
         console.log('Market price: ', marketPriceRes.symbol, ': ', mkPrice);
         console.log('Token qty per order: ', tokenAmountPerOrder);
     }
@@ -202,11 +213,12 @@ async function command({
 
     closes = await getHistoryTickCandle(TRADE_SYMBOL, CANDLE_PERIOD);
 
-    if (stepPrice == -1 || tokenAmountPerOrder <= 0) {
+    if (stepPrice == -1 || tokenAmountPerOrder <= 0 || stepPriceDecimal < 0) {
         console.log('Error step: ',
             stepPrice,
             'Error amount: ',
-            tokenAmountPerOrder);
+            tokenAmountPerOrder,
+            'Error Price decimal: ', stepPriceDecimal);
         return;
     }
 
@@ -408,12 +420,12 @@ async function command({
             let tempTokenAmount = tokenAmountPerOrder;
             if (increaseAfterLoss && histories?.length > 0) {
                 const _lastItem = histories[histories.length - 1];
+
                 if (_lastItem.result == 'LOSS') {
+                    tempAmount = parseFloat((_lastItem.amountPerOrder * 2));
                     if ((stepPrice + '').includes('.')) {
-                        tempAmount = parseFloat((_lastItem.amountPerOrder * 2).toFixed(stepPriceDecimal));
-                        tempTokenAmount = parseFloat((_lastItem.tokenAmountPerOrder * 2).toFixed(stepPriceDecimal));
+                        tempTokenAmount = parseFloat((_lastItem.tokenAmountPerOrder * 2).toFixed(orderQtyPriceDecimal));
                     } else {
-                        tempAmount = parseInt((_lastItem.amountPerOrder * 2));
                         tempTokenAmount = parseInt((_lastItem.tokenAmountPerOrder * 2));
                     }
                 } else if (_lastItem.result != 'WIN') {
@@ -457,7 +469,7 @@ async function command({
         let todo = '';
         let sl = -1;
         let tp = -1;
-        let decimal = (params.closePrice + '').split('.')[1] ? (params.closePrice + '').split('.')[1].length : 0;
+        // let decimal = (params.closePrice + '').split('.')[1] ? (params.closePrice + '').split('.')[1].length : 0;
 
         if (
             rawHistories?.length > (historyDistance)
@@ -479,8 +491,8 @@ async function command({
                 todo = 'SELL';
                 const _sl = parseFloat(params.closePrice + params.closePrice * (stopLossPercent / leverage) / 100);
                 const _tp = parseFloat(params.closePrice - params.closePrice * (profitPercent / leverage) / 100);
-                sl = parseFloat((_sl).toFixed(decimal));
-                tp = parseFloat((_tp).toFixed(decimal));
+                sl = parseFloat((_sl).toFixed(stepPriceDecimal));
+                tp = parseFloat((_tp).toFixed(stepPriceDecimal));
             }
             if (
                 // params.macd2.MACD > params.macd2.signal
@@ -493,8 +505,8 @@ async function command({
                 todo = 'BUY';
                 const _sl = parseFloat(params.closePrice - params.closePrice * (stopLossPercent / leverage) / 100);
                 const _tp = parseFloat(params.closePrice + params.closePrice * (profitPercent / leverage) / 100);
-                sl = parseFloat((_sl).toFixed(decimal));
-                tp = parseFloat((_tp).toFixed(decimal));
+                sl = parseFloat((_sl).toFixed(stepPriceDecimal));
+                tp = parseFloat((_tp).toFixed(stepPriceDecimal));
             }
         }
 
