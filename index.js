@@ -42,38 +42,44 @@ let endTime = Date.now();
 
 let historyDistance = 1;
 
-let profitPercent = 20;
-let stopLossPercent = 20;
-let leverage = 40;
+// let profitPercent = 100;
+// let stopLossPercent = 20;
+// let leverage = 75;
+let increaseAfterLoss = false; // double your initial amount whenever loss an order
+let cutLossStreak = 100;
 
-
-let capital = 0.5;
-let countWinMax = 5;
+let capital = 0.3;
+let countWinMax = 1000;
+let stopWhenHasProfit = 4;
 
 const tradingCommands = [
-    { sym: 'xrp', },
-    { sym: 'eth', },
-    { sym: 'ada', },
-    { sym: 'link', },
-    { sym: 'bch', },
+    // { sym: 'xrp', },
+    // { sym: 'eth', leverage: 15, profitPercent: 15, stopLossPercent: 15, profitStopPrice: -1 },
+    // { sym: 'ada', },
+    { sym: 'link', leverage: 39, profitPercent: 20, stopLossPercent: 20, profitStopPrice: 100, },
+    // { sym: 'bch', },
 
-    { sym: '1inch', },
-    { sym: 'etc', },
-    { sym: 'ltc', },
-    { sym: 'eos', },
-    { sym: 'bnb', },
+    // { sym: '1inch', },
+    // { sym: 'etc', },
+    // { sym: 'ltc', },
+    // { sym: 'eos', },
+    // { sym: 'bnb', },
 
-    { sym: 'neo', },
-    { sym: 'dash', },
-    { sym: 'dot', },
-    { sym: 'uni', },
-    { sym: 'avax', },
+    // { sym: 'neo', },
+    // { sym: 'dash', },
+    // { sym: 'dot', },
+    // { sym: 'uni', },
+    // { sym: 'avax', },
 ];
 tradingCommands.forEach(item => {
     command({
         sym: item.sym,
         dollarAmountPerOrder: capital,
+        profitPercent: item.profitPercent,
+        stopLossPercent: item.stopLossPercent,
+        leverage: item.leverage,
         maxWinPerCommand: countWinMax,
+        profitStopPrice: item.profitStopPrice,
     });
 });
 
@@ -132,6 +138,10 @@ async function command({
     sym,
     dollarAmountPerOrder,
     maxWinPerCommand,
+    profitPercent,
+    stopLossPercent,
+    leverage,
+    profitStopPrice,
 }) {
 
     let startTime = new Date().toISOString();
@@ -142,7 +152,6 @@ async function command({
     let tokenAmountPerOrder = 0; // => will auto get the market price and set to this var
     let stopTrading = false;
     let findingStopSpot = false;
-    let increaseAfterLoss = true; // double your initial amount whenever loss an order
 
     let winCount = 0;
     let orderQtyPriceDecimal = 2; // step price for order qty
@@ -179,13 +188,14 @@ async function command({
     for (let i = 0; i < exchangeInfo.symbols.length; i++) {
         let item = exchangeInfo.symbols[i];
         if (item.symbol.toUpperCase() == TRADE_SYMBOL.toUpperCase()) {
+            console.log("🚀 ~ file: index.js ~ line 182 ~ item", item)
             console.info(' Step:', item.filters[1].stepSize);
 
             // decimal size for qty
-            stepPrice = item.filters[1].stepSize;
+            stepPrice = item.filters[1].stepSize.replace(/0*$/g, "");
 
             // decimal size for price
-            let tickSize = item.filters[0].tickSize;
+            let tickSize = item.filters[0].tickSize.replace(/0*$/g, "");
             stepPriceDecimal = (tickSize + '').split('.')[1] ? (tickSize + '').split('.')[1].length : 0;
             console.log("stepPriceDecimal: ", stepPriceDecimal)
             break;
@@ -249,15 +259,29 @@ async function command({
 
                 const candle = JSON.parse(message.utf8Data);
                 if (stopTrading || loading) {
+                    let profitLast = 0;
+                    if (histories?.length > 0) {
+                        const item = histories[histories.length - 1];
+                        profitLast = item.totalAmount - initialAmount;
+                    }
+
+
                     process.stdout.cursorTo(0);
                     process.stdout.clearLine();
-                    process.stdout.write('STOPPED.' + stopTrading + '-' + loading);
+                    process.stdout.write('STOPPED.' + stopTrading + '-' + loading
+                        + ' Profit: ' + profitLast);
                     return;
                 }
 
+
+
                 process.stdout.clearLine();
                 process.stdout.cursorTo(0);
-                process.stdout.write('Current State: ' + TRADE_SYMBOL + ' Is Stop: ' + stopTrading + ' Price: ' + candle.k.c + ' ');
+                process.stdout.write('Current State: ' + TRADE_SYMBOL +
+                    ' Is Stop: ' + stopTrading +
+                    ' Price: ' + candle.k.c +
+                    + ' '
+                );
 
                 // console.log('isStopTrade:', stopTrading, 'price: ' + candle.k.c, 'isClose: ' + candle.k.x, '', 'length: ' + closes.length);
                 // candle closed
@@ -283,6 +307,7 @@ async function command({
                     && !histories[histories.length - 1].processed) {
                     loading = true;
                     let lastItem = histories[histories.length - 1];
+                    // console.log("🚀 ~ file: index.js ~ line 296 ~ lastItem", lastItem.todo)
 
                     if (lastItem.todo == 'BUY') {
                         if (close >= lastItem.tp) {
@@ -336,7 +361,7 @@ async function command({
                             lastItem.lossStreak = (lastOfLastItem?.lossStreak || 0) + 1;
                             lastItem.winStreak = 0;
 
-                            lastItem.profitPercent = -profitPercent;
+                            lastItem.profitPercent = -stopLossPercent;
                         }
                         lastItem.profit = lastItem.amountPerOrder * lastItem.profitPercent / 100;
                         lastItem.totalAmount = lastItem.totalAmount + lastItem.profit;
@@ -344,11 +369,27 @@ async function command({
 
                         clearLastItemPos(TRADE_SYMBOL);
 
+                        if (lastItem.totalAmount - initialAmount >= profitStopPrice
+                            || lastItem.totalAmount - initialAmount <= -profitStopPrice
+                        ) {
+                            console.log("🚀 ~lastItem.totalAmount - initialAmount >= profitStopPrice", lastItem.totalAmount, initialAmount, profitStopPrice)
+                            stopTrading = true;
+                        }
+
+                        const winArr = histories.filter(x => x.result == 'WIN');
+                        const lossArr = histories.filter(x => x.result && x.result != 'WIN');
+                        if (winArr?.length - lossArr?.length >= stopWhenHasProfit
+                            || winArr?.length - lossArr?.length <= -stopWhenHasProfit) {
+                            stopTrading = true;
+                        }
+
                     }
 
                     // update DB after last item processed
                     fs.writeFileSync(databaseName, JSON.stringify(histories));
 
+                } else {
+                    // console.log('not update', close)
                 }
 
                 await processCloseTick(close, open, is_candle_closed, closes, stopTrading);
@@ -400,6 +441,12 @@ async function command({
                 period: EMA_PERIOD_200,
             })
 
+            let technicalIndicatorsBollingerBands = technicalIndicators.BollingerBands.calculate({
+                values: closes,
+                period: BOLLINGER_BANDS_PERIOD,
+                stdDev: BOLLINGER_BANDS_STDEV,
+            })
+
             let technicalIndicatorsMACD = technicalIndicators.MACD.calculate({
                 values: closes,
                 fastPeriod: MACD_FAST,
@@ -421,22 +468,30 @@ async function command({
             if (increaseAfterLoss && histories?.length > 0) {
                 const _lastItem = histories[histories.length - 1];
 
-                if (_lastItem.result == 'LOSS') {
-                    tempAmount = parseFloat((_lastItem.amountPerOrder * 2));
-                    if ((stepPrice + '').includes('.')) {
-                        tempTokenAmount = parseFloat((_lastItem.tokenAmountPerOrder * 2).toFixed(orderQtyPriceDecimal));
-                    } else {
-                        tempTokenAmount = parseInt((_lastItem.tokenAmountPerOrder * 2));
+                if (_lastItem.lossStreak >= cutLossStreak) {
+                    // reset the token amount after loss streak reached limit
+                    _lastItem.lossStreak = 0;
+                } else {
+                    if (_lastItem.result == 'LOSS') {
+
+                        tempAmount = parseFloat((_lastItem.amountPerOrder * 2));
+                        if ((stepPrice + '').includes('.')) {
+                            tempTokenAmount = parseFloat((_lastItem.tokenAmountPerOrder * 2).toFixed(orderQtyPriceDecimal));
+                        } else {
+                            tempTokenAmount = parseInt((_lastItem.tokenAmountPerOrder * 2));
+                        }
+                    } else if (_lastItem.result != 'WIN') {
+                        // incase confuse, loss connect, error...
+                        tempAmount = _lastItem.amountPerOrder;
+                        tempTokenAmount = _lastItem.tokenAmountPerOrder;
                     }
-                } else if (_lastItem.result != 'WIN') {
-                    // incase confuse, loss connect, error...
-                    tempAmount = _lastItem.amountPerOrder;
-                    tempTokenAmount = _lastItem.tokenAmountPerOrder;
                 }
             }
 
             await saveDataAndProcessTrade({
                 date: new Date().toISOString(),
+                orderQtyPriceDecimal,
+                stepPriceDecimal,
                 winStreak: 0,
                 lossStreak: 0,
                 kdj,
@@ -447,6 +502,7 @@ async function command({
                 ema50: technicalIndicatorsEMA_50[technicalIndicatorsEMA_50.length - 1],
                 ema100: technicalIndicatorsEMA_100[technicalIndicatorsEMA_100.length - 1],
                 ema200: technicalIndicatorsEMA_200[technicalIndicatorsEMA_200.length - 1],
+                bb: technicalIndicatorsBollingerBands[technicalIndicatorsBollingerBands.length - 1],
                 closePrice: curClose,
                 openPrice: curOpen,
                 placeOrderType: 'nothing',
@@ -454,7 +510,10 @@ async function command({
                 leverage,
                 amountPerOrder: tempAmount,
                 tokenAmountPerOrder: tempTokenAmount, // number to trade
+                initAmountPerOrder: dollarAmountPerOrder,
+                intiTokenQty: tokenAmountPerOrder,
                 totalAmount,
+                initialAmount,
             })
 
             printWinRate(histories, rawHistories, dollarAmountPerOrder, startTime, timeReachedFinal, TRADE_SYMBOL, initialAmount);
@@ -472,8 +531,9 @@ async function command({
         // let decimal = (params.closePrice + '').split('.')[1] ? (params.closePrice + '').split('.')[1].length : 0;
 
         if (
-            rawHistories?.length > (historyDistance)
-            && rawHistories[rawHistories.length - historyDistance].macd2
+            // rawHistories?.length > (historyDistance)
+            // && rawHistories[rawHistories.length - historyDistance].macd2
+            params.rsi2
         ) {
 
             // condition
@@ -482,29 +542,35 @@ async function command({
             if (
                 // params.macd2.MACD < params.macd2.signal
                 // && lastItem.macd2.MACD > lastItem.macd2.signal
-                params.closePrice < lastItem.closePrice
+                // params.closePrice > lastItem.closePrice
+                // params.closePrice < params.bb.middle
+                // params.macd2.MACD < params.macd2.signal
+                params.rsi2 < 50
 
             ) {
                 // if (params.rsi2 > RSI_OVERBOUGHT) {
                 // if (kdj.valueJ > kdjOverBought) {
                 console.log('Should SELL SELL SELL SELL');
                 todo = 'SELL';
-                const _sl = parseFloat(params.closePrice + params.closePrice * (stopLossPercent / leverage) / 100);
-                const _tp = parseFloat(params.closePrice - params.closePrice * (profitPercent / leverage) / 100);
+                const _sl = parseFloat(params.closePrice + params.closePrice * stopLossPercent / 100 / leverage);
+                const _tp = parseFloat(params.closePrice - params.closePrice * profitPercent / 100 / leverage);
                 sl = parseFloat((_sl).toFixed(stepPriceDecimal));
                 tp = parseFloat((_tp).toFixed(stepPriceDecimal));
             }
             if (
                 // params.macd2.MACD > params.macd2.signal
                 // && lastItem.macd2.MACD < lastItem.macd2.signal
-                params.closePrice > lastItem.closePrice
+                // params.closePrice < lastItem.closePrice
+                // params.closePrice > params.bb.middle
+                // params.macd2.MACD > params.macd2.signal
+                params.rsi2 > 50
             ) {
                 // if (params.rsi2 < RSI_OVERSOLD) {
                 // if (kdj.valueJ < kdjOverSold) {
                 console.log('Should BUY BUY BUY BUY');
                 todo = 'BUY';
-                const _sl = parseFloat(params.closePrice - params.closePrice * (stopLossPercent / leverage) / 100);
-                const _tp = parseFloat(params.closePrice + params.closePrice * (profitPercent / leverage) / 100);
+                const _sl = parseFloat(params.closePrice - params.closePrice * stopLossPercent / 100 / leverage);
+                const _tp = parseFloat(params.closePrice + params.closePrice * profitPercent / 100 / leverage);
                 sl = parseFloat((_sl).toFixed(stepPriceDecimal));
                 tp = parseFloat((_tp).toFixed(stepPriceDecimal));
             }

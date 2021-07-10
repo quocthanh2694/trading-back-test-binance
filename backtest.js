@@ -20,12 +20,13 @@ const technicalIndicators = require('technicalindicators');
 const { calculateRSIData } = require('./functions.js');
 
 let totalAmount = 100;
-let dollarAmountPerOrder = 0.2;
+let dollarAmountPerOrder = 1;
 let maxWinPerCommand = 1000;
 
 let tokenAmountPerOrder = 0; // => will auto get the market price and set to this var
 let stopTrading = false;
-let increaseAfterLoss = true;
+let increaseAfterLoss = false;
+let increaseAfterWin = false;
 
 // let tradeIncreasePerLossStreak = 4; // lossStreak % 4 = double. Ex: 5 % 4 => 2;
 let historyDistance = 1;
@@ -37,12 +38,15 @@ let winCount = 0;
 let BOLLINGER_BANDS_PERIOD = 21;
 let BOLLINGER_BANDS_STDEV = 2;
 
-let sym = 'eth';
+let cutLossStreak = 100;
+
+// let sym = 'eth';
 // let sym = 'etc';
 // let sym = 'ltc';
-// let sym = 'link';
-// let sym = 'xrp';
+let sym = 'link';
+// let sym = 'eos';
 // let sym = 'ada';
+// let sym = 'xrp';
 let TRADE_SYMBOL = sym + 'usdt';
 let TRADE_SYMBOL_SPLASH = sym + '/usdt';
 console.log('Pair: ', TRADE_SYMBOL.toUpperCase())
@@ -51,9 +55,20 @@ let CANDLE_PERIOD = '1m';
 let kdjOverBought = 65;
 let kdjOverSold = 35;
 
+let leverage = 39;
 let profitPercent = 20;
-let stopLossPercent = 20;
-let leverage = 40;
+let stopLossPercent = 40;
+// let countIgnore = 0;
+
+let endTime = Date.now(); // normal
+// endTime = new Date(2021, 7, 4).getTime();
+// endTime = new Date(2021, 7, 3).getTime();
+// endTime = new Date(2021, 7, 2).getTime();
+// endTime = new Date(2021, 7, 1).getTime();
+// endTime = new Date(2021, 2, 19).getTime(); // up trend
+//   endTime = new Date(2021, 5, 18).getTime(); // down trend
+// endTime = new Date(2021, 5, 22).getTime();
+// endTime = new Date(2021, 5, 20).getTime();
 
 let histories = [];
 let rawHistories = [];
@@ -68,13 +83,10 @@ let RSI_OVERBOUGHT = 70
 let RSI_OVERSOLD = 30
 
 
-let endTime = Date.now(); // normal
-// let endTime = new Date(2021, 2, 19).getTime(); // up trend
-// let endTime = new Date(2021, 5, 18).getTime(); // down trend
-// let endTime = new Date(2021, 5, 22).getTime();
 
-let databaseName = 'historyData/backTest_' + TRADE_SYMBOL + (new Date().toISOString().split(":").join("-")) + 'fileData.json';
-let databaseNameRaw = 'historyData/backTestRaw_' + TRADE_SYMBOL + (new Date().toISOString().split(":").join("-")) + 'rawData.json';
+
+let databaseName = 'historyData/_backTest_' + TRADE_SYMBOL + (new Date().toISOString().split(":").join("-")) + 'fileData.json';
+let databaseNameRaw = 'historyData/_backTestRaw_' + TRADE_SYMBOL + (new Date().toISOString().split(":").join("-")) + 'rawData.json';
 
 let closes = []
 
@@ -90,10 +102,10 @@ function getWinRate() {
     let winRate = 0;
     if (histories.length > 0) {
         const winArr = histories.filter(x => x.result == 'WIN');
-        const lossArr = histories.filter(x => x.result != 'WIN');
+        const lossArr = histories.filter(x => x.result == 'LOSS');
         const total = winArr.length + lossArr.length;
         winRate = winArr.length / total * 100;
-        // console.log("W Count", winArr.length, "Loss count:", lossArr.length);
+        console.log("W Count", winArr.length, "Loss count:", lossArr.length);
     }
     return winRate;
 }
@@ -117,49 +129,85 @@ async function saveData(params) {
         let lastItem2 = rawHistories[rawHistories.length - historyDistance - 1];
         if (
             // params.macd2.MACD < params.macd2.signal
-            // && lastItem.macd2.MACD > lastItem.macd2.signal
+            // &&
+            //  params.macd2.histogram < 0
+            // params.rsi2 > 80
+            // params.rsi2 < 80
+            // && params.closePrice < params.ema200
+
             // params.rsi2 < 50
+            // && lastItem.rsi2 > params.rsi2
 
-            params.closePrice < lastItem.closePrice
+            // && params.closePrice < lastItem.closePrice
+            // & params.macd2.histogram < lastItem.macd2.histogram
+            // && params.closePrice < params.ema200
 
+            // params.closePrice < params.bb.middle
             // params.closePrice < params.bb.upper
+            // && lastItem.closePrice > lastItem.bb.upper
+            params.closePrice > params.bb.upper
             // && lastItem.highPrice > params.bb.upper
-            // params.rsi2 > RSI_OVERBOUGHT
+            // true
 
             // params.bb.middle < params.ema100
             // && lastItem.bb.middle > lastItem.ema100
             // && params.closePrice < params.ema200
 
-            // && params.closePrice < params.openPrice
+            // params.closePrice < lastItem.closePrice
             // && lastItem.closePrice < lastItem.openPrice
         ) {
             // if (params.rsi2 > RSI_OVERBOUGHT) {
             // if (kdj.valueJ > kdjOverBought) {
             // console.log('Should SELL SELL SELL SELL');
+
             todo = 'SELL';
             const _sl = parseFloat(params.closePrice + params.closePrice * (stopLossPercent / leverage) / 100);
             const _tp = parseFloat(params.closePrice - params.closePrice * (profitPercent / leverage) / 100);
-            sl = parseFloat((_sl).toFixed(decimal));
-            tp = parseFloat((_tp).toFixed(decimal));
+            sl = parseFloat((_sl));
+            tp = parseFloat((_tp));
+
             // tp = params.bb.lower;
             // sl = params.closePrice + params.bb.pb;
         } else
             if (
                 // params.macd2.MACD > params.macd2.signal
+                // &&
+                //  params.macd2.histogram > 0
+                // params.rsi2 < 20
+                params.closePrice < params.bb.upper
+                // params.rsi2 > 20
+                // && params.closePrice > params.ema200
+
+                // && params.closePrice > lastItem.closePrice
+
+                // && params.rsi2 > 20
+                // && params.macd2.MACD > lastItem.macd2.MACD
+                // && params.macd2.signal > lastItem.macd2.signal
+                // params.macd2.MACD > params.macd2.signal
                 // && lastItem.macd2.MACD < lastItem.macd2.signal
+                // params.closePrice > lastItem.closePrice
 
                 // params.closePrice > params.bb.lower
+                // && lastItem.closePrice < lastItem.bb.lower
+                // params.closePrice > params.bb.lower
                 // && lastItem.lowPrice < params.bb.lower
+                // params.closePrice > params.bb.middle
+                // params.closePrice > params.bb.lower
+                // && lastItem.closePrice < lastItem.bb.lower
+                //   params.closePrice > params.bb.middle
 
-                params.closePrice > lastItem.closePrice
+
+                // params.closePrice < lastItem.closePrice
+                // & params.macd2.histogram > lastItem.macd2.histogram
+                // && params.closePrice > params.ema200
 
                 // && params.closePrice > params.ema200
                 // params.bb.middle > params.ema100
                 // && lastItem.bb.middle < lastItem.ema100
 
-
-                // params.rsi2 < RSI_OVERSOLD
+                // false
                 // params.rsi2 > 50
+                // && params.rsi2 > 50
 
 
                 // && params.closePrice > params.openPrice
@@ -171,8 +219,8 @@ async function saveData(params) {
                 todo = 'BUY';
                 const _sl = parseFloat(params.closePrice - params.closePrice * (stopLossPercent / leverage) / 100);
                 const _tp = parseFloat(params.closePrice + params.closePrice * (profitPercent / leverage) / 100);
-                sl = parseFloat((_sl).toFixed(decimal));
-                tp = parseFloat((_tp).toFixed(decimal));
+                sl = parseFloat((_sl));
+                tp = parseFloat((_tp));
                 // tp = params.bb.upper;
                 // sl = params.closePrice - params.bb.pb;
             }
@@ -191,6 +239,10 @@ async function saveData(params) {
                 stopTrading = true;
             }
 
+            // if (countIgnore > 0) {
+            //     countIgnore--;
+            //     console.log("🚀 ~ file: backtest.js ~ line 249 ~ saveData ~ countIgnore", countIgnore)
+            // } else {
             if (!stopTrading) {
                 if (todo == 'BUY' || todo == 'SELL') {
                     histories.push({
@@ -212,6 +264,8 @@ async function saveData(params) {
             } else {
                 console.log('STOP TRADE!!!!')
             }
+            // }
+
         } else {
             console.log('Ignore trend.')
         }
@@ -273,8 +327,9 @@ function PrintWinRate() {
 
 function startBackTest() {
     binance.candlesticks(TRADE_SYMBOL.toUpperCase(), CANDLE_PERIOD, (error, ticks, symbol) => {
-        console.log('init closes length: ', closes?.length)
+        console.log("🚀 ~ file: backtest.js ~ line 304 ~ binance.candlesticks ~ error", error)
         closes = ticks;
+        console.log('init closes length: ', closes?.length)
         testHistory(closes);
 
     }, {
@@ -354,8 +409,10 @@ function testHistory(arr = []) {
             if (lastItem.result == 'WIN') {
                 lastItem.profitPercent = profitPercent;
 
-            } else if (lastItem.result == 'LOSS') {
-                lastItem.profitPercent = -profitPercent;
+            } else { // if (lastItem.result == 'LOSS')
+                lastItem.profitPercent = -stopLossPercent;
+                // countIgnore++;
+                // console.log("🚀 ~ countIgnore++ ", countIgnore)
             }
             lastItem.profit = lastItem.amountPerOrder * lastItem.profitPercent / 100;
             lastItem.totalAmount = lastItem.totalAmount + lastItem.profit;
@@ -420,6 +477,7 @@ function testHistory(arr = []) {
             } else {
                 histories[histories.length - 1].lossStreak = (histories[histories.length - 2].lossStreak || 0) + 1;
                 histories[histories.length - 1].winStreak = 0;
+                countLoss = histories[histories.length - 1].lossStreak;
             }
         }
 
@@ -427,9 +485,26 @@ function testHistory(arr = []) {
         let tempAmount = dollarAmountPerOrder;
         let tempTokenAmount = tokenAmountPerOrder;
         if (increaseAfterLoss) {
-            if (histories && histories.length > 0 && histories[histories.length - 1].lossStreak > 0) {
-                tempAmount = histories[histories.length - 1].amountPerOrder * 2;
-                tempTokenAmount = histories[histories.length - 1].tokenAmountPerOrder * 2;
+
+            if (histories && histories.length > 0 && histories[histories.length - 1].lossStreak > 0
+                && histories[histories.length - 1].processed) {
+                let _lastItem = histories[histories.length - 1];
+                if (_lastItem.lossStreak >= cutLossStreak) {
+                    // reset the token amount after loss streak reached limit
+                    _lastItem.lossStreak = 0;
+                    console.log('cut after losss', tokenAmountPerOrder, dollarAmountPerOrder)
+                } else {
+                    tempAmount = _lastItem.amountPerOrder * 2;
+                    tempTokenAmount = _lastItem.tokenAmountPerOrder * 2;
+                }
+            }
+        }
+        if (increaseAfterWin) {
+            if (histories && histories.length > 0 && histories[histories.length - 1].winStreak > 0
+                && histories[histories.length - 1].processed) {
+                let _lastItem = histories[histories.length - 1];
+                tempAmount = _lastItem.amountPerOrder * 2;
+                tempTokenAmount = _lastItem.tokenAmountPerOrder * 2;
             }
         }
 

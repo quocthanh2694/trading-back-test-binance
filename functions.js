@@ -5,7 +5,7 @@ function calculateRSIData(closes, RSI_PERIOD) {
     let changeUp = 0;
     let changeDown = 0;
     let last_closeHigh = 0;
-let last_closeLow = 0;
+    let last_closeLow = 0;
 
     let listClose = closes;
     for (x = 0; x < RSI_PERIOD; x++) {
@@ -47,10 +47,11 @@ function getWinRate(histories) {
     let winRate = 0;
     if (histories.length > 0) {
         const winArr = histories.filter(x => x.result == 'WIN');
-        const lossArr = histories.filter(x => x.result != 'WIN');
+        const lossArr = histories.filter(x => x.result && x.result != 'WIN');
+        const pendingArr = histories.filter(x => x && !x.result);
         const total = winArr.length + lossArr.length;
         winRate = winArr.length / total * 100;
-        console.log("W Count", winArr.length, "Loss count:", lossArr.length);
+        console.log("W Count", winArr.length, "Loss count:", lossArr.length, " Pending: " + pendingArr.length);
     }
     return winRate;
 }
